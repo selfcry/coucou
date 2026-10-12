@@ -105,8 +105,13 @@ struct SettingsView: View {
     @State private var notionKey: String    = KeychainStore.shared.get("notion-api-key")  ?? ""
 
     // Telegram
-    @State private var tgBotToken: String  = KeychainStore.shared.get("tg-bot-token") ?? ""
+    @State private var tgApiId: String     = KeychainStore.shared.get("tg-api-id")    ?? ""
+    @State private var tgApiHash: String   = KeychainStore.shared.get("tg-api-hash")  ?? ""
+    @State private var tgPhone: String     = KeychainStore.shared.get("tg-phone")     ?? ""
+    @State private var tgCode: String      = ""
+    @State private var tgPassword: String  = ""
     @State private var tgAuthState: String = TelegramClient.shared.authState.rawValue
+    @State private var tgAuthError: String = ""
 
     // Discord
     @State private var discordToken: String = KeychainStore.shared.get("discord-token") ?? ""
@@ -1306,7 +1311,11 @@ struct SettingsView: View {
                         Circle().fill(Color(hex: "#26A5E4")).frame(width: 8, height: 8)
                         Text("Telegram").font(.system(size: 12, weight: .semibold))
                     }
-                    if tgAuthState == "ready" {
+                    if !TelegramClient.shared.isLoaded {
+                        Text("TDLib not found — Telegram unavailable in this build")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(hex: "#F4505E"))
+                    } else if tgAuthState == "ready" {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(Color(hex: "#22C55E"))
@@ -1317,24 +1326,58 @@ struct SettingsView: View {
                             Spacer()
                             Button("Logout") {
                                 TelegramClient.shared.logout()
-                                tgBotToken = ""
                                 tgAuthState = "none"
                             }
                             .font(.system(size: 10))
                         }
                     } else {
-                        SecureField("Bot Token (from @BotFather)", text: $tgBotToken)
+                        TextField("API ID  (from my.telegram.org)", text: $tgApiId)
                             .textFieldStyle(.roundedBorder)
-                        Button("Connect") {
-                            TelegramClient.shared.configure(token: tgBotToken)
-                            tgAuthState = "ready"
+                        SecureField("API Hash", text: $tgApiHash)
+                            .textFieldStyle(.roundedBorder)
+
+                        if tgAuthState == "awaitingPhone" || tgAuthState == "none" {
+                            TextField("Phone  (+7…)", text: $tgPhone)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Send Code") {
+                                TelegramClient.shared.setCredentials(apiId: tgApiId, apiHash: tgApiHash)
+                                TelegramClient.shared.sendPhone(tgPhone)
+                            }
+                            .font(.system(size: 11))
+                            .disabled(tgApiId.isEmpty || tgApiHash.isEmpty || tgPhone.isEmpty)
+                        } else if tgAuthState == "awaitingCode" {
+                            TextField("Code from Telegram", text: $tgCode)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Verify Code") {
+                                TelegramClient.shared.sendCode(tgCode)
+                            }
+                            .font(.system(size: 11))
+                            .disabled(tgCode.isEmpty)
+                        } else if tgAuthState == "awaitingPassword" {
+                            SecureField("2FA Password", text: $tgPassword)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Submit Password") {
+                                TelegramClient.shared.sendPassword(tgPassword)
+                            }
+                            .font(.system(size: 11))
+                            .disabled(tgPassword.isEmpty)
                         }
-                        .font(.system(size: 11))
-                        .disabled(tgBotToken.isEmpty)
+
+                        if !tgAuthError.isEmpty {
+                            Text(tgAuthError)
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(hex: "#F4505E"))
+                        }
                     }
-                    Text("Create a bot via @BotFather, add it to your groups/channels")
+                    Text("Get API credentials at my.telegram.org → API development tools")
                         .font(.system(size: 10))
                         .foregroundColor(Color(hex: "#8E939C"))
+                }
+                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+                    let s = TelegramClient.shared.authState.rawValue
+                    if s != tgAuthState { tgAuthState = s }
+                    let e = TelegramClient.shared.authError
+                    if e != tgAuthError { tgAuthError = e }
                 }
 
                 // Discord
@@ -2134,7 +2177,9 @@ struct SettingsView: View {
         saveKey("stripe-api-key",  value: stripeKey)
         saveKey("calcom-api-key",  value: calcomKey)
         saveKey("notion-api-key",  value: notionKey)
-        saveKey("tg-bot-token",   value: tgBotToken)
+        saveKey("tg-api-id",      value: tgApiId)
+        saveKey("tg-api-hash",    value: tgApiHash)
+        saveKey("tg-phone",       value: tgPhone)
         saveKey("discord-token",  value: discordToken)
         statusMessage = String(localized: "status.integrations-saved")
     }

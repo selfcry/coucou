@@ -161,6 +161,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MACOSX_DEPLOYMENT_TARGET: "15.0"
         ENABLE_SANDBOX: NO
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
       configs:
         DebugCloud:
           CODE_SIGN_ENTITLEMENTS: Resources/CoucouCloud.entitlements

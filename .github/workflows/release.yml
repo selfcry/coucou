@@ -15,6 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache TDLib
+        id: cache-tdlib
+        uses: actions/cache@v4
+        with:
+          path: tdlib-install
+          key: tdlib-macos-arm64-v1
+
+      - name: Build TDLib
+        if: steps.cache-tdlib.outputs.cache-hit != 'true'
+        run: |
+          brew install gperf cmake openssl
+          git clone --depth 1 https://github.com/tdlib/td.git
+          cd td && mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release \
+                -DOPENSSL_ROOT_DIR=$(brew --prefix openssl) \
+                -DCMAKE_INSTALL_PREFIX=../../tdlib-install \
+                ..
+          cmake --build . --target tdjson -j$(sysctl -n hw.ncpu)
+          cmake --install . --component libtdjson
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -44,6 +64,13 @@ jobs:
             APP_PATH=$(find build -name "*.app" | head -1)
           fi
           echo "Found app at: $APP_PATH"
+          # Embed TDLib
+          mkdir -p "$APP_PATH/Contents/Frameworks"
+          TDLIB=$(find tdlib-install -name "libtdjson.dylib" | head -1)
+          if [ -n "$TDLIB" ]; then
+            cp "$TDLIB" "$APP_PATH/Contents/Frameworks/"
+            install_name_tool -id @rpath/libtdjson.dylib "$APP_PATH/Contents/Frameworks/libtdjson.dylib"
+          fi
           cp -R "$APP_PATH" Coucou.app
           ditto -c -k --sequesterRsrc --keepParent Coucou.app Coucou-macOS.zip
           ls -lh Coucou-macOS.zip
