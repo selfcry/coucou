@@ -315,7 +315,7 @@ final class TelegramClient: @unchecked Sendable {
 
     // MARK: - Send message
 
-    func sendMessage(chatId: Int64, text: String, completion: @escaping (Bool) -> Void) {
+    func sendMessage(chatId: Int64, text: String, completion: @Sendable @escaping (Bool) -> Void) {
         send([
             "@type": "sendMessage",
             "chat_id": chatId,
