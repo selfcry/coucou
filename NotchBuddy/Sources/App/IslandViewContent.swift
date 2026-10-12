@@ -5099,6 +5099,9 @@ extension Color {
 
 struct TelegramCardView: View {
     let chats: [TelegramChat]
+    @State private var replyText = ""
+    @State private var replyingTo: Int64?
+    @State private var sending = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5120,28 +5123,81 @@ struct TelegramCardView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(chats.prefix(4))) { chat in
-                    HStack(spacing: 5) {
-                        Image(systemName: chat.icon)
-                            .font(.system(size: 9))
-                            .foregroundColor(Color(hex: "#26A5E4"))
-                            .frame(width: 12)
-                        Text(chat.name)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#C5C8CD"))
-                            .lineLimit(1).truncationMode(.tail)
-                            .layoutPriority(1)
-                        Spacer(minLength: 2)
-                        Text("\(chat.unreadCount)")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(hex: "#26A5E4"))
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Color(hex: "#26A5E4").opacity(0.15))
-                            .clipShape(Capsule())
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
+                            Image(systemName: chat.icon)
+                                .font(.system(size: 9))
+                                .foregroundColor(Color(hex: "#26A5E4"))
+                                .frame(width: 12)
+                            Text(chat.name)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color(hex: "#C5C8CD"))
+                                .lineLimit(1).truncationMode(.tail)
+                                .layoutPriority(1)
+                            Spacer(minLength: 2)
+                            Text("\(chat.unreadCount)")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Color(hex: "#26A5E4"))
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Color(hex: "#26A5E4").opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+
+                        if let msg = chat.lastMessage, !msg.isEmpty {
+                            HStack(spacing: 3) {
+                                if let author = chat.lastAuthor {
+                                    Text("\(author):")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(Color(hex: "#8E939C"))
+                                }
+                                Text(msg)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "#6B7079"))
+                                    .lineLimit(2)
+                            }
+                            .padding(.leading, 17)
+                        }
+
+                        if replyingTo == chat.chatId {
+                            HStack(spacing: 4) {
+                                TextField("Reply…", text: $replyText)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "#F5F6F8"))
+                                    .padding(.horizontal, 6).padding(.vertical, 3)
+                                    .background(Color(hex: "#26A5E4").opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                Button {
+                                    guard !replyText.isEmpty else { return }
+                                    sending = true
+                                    let text = replyText
+                                    TelegramClient.shared.sendMessage(chatId: chat.chatId, text: text) { ok in
+                                        DispatchQueue.main.async {
+                                            sending = false
+                                            if ok { replyText = ""; replyingTo = nil }
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: sending ? "hourglass" : "paperplane.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Color(hex: "#26A5E4"))
+                                }
+                                .disabled(replyText.isEmpty || sending)
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.leading, 17)
+                        }
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(chat == chats.first ? Color(hex: "#26A5E4").opacity(0.08) : .clear)
                     .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            replyingTo = replyingTo == chat.chatId ? nil : chat.chatId
+                            replyText = ""
+                        }
+                    }
                 }
             }
             .padding(.top, 5)
@@ -5157,6 +5213,9 @@ struct TelegramCardView: View {
 
 struct DiscordCardView: View {
     let notifications: [DiscordNotification]
+    @State private var replyText = ""
+    @State private var replyingTo: String?
+    @State private var sending = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5175,20 +5234,73 @@ struct DiscordCardView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(notifications.prefix(4))) { notif in
-                    HStack(spacing: 5) {
-                        Image(systemName: notif.isDM ? "person.fill" : "number")
-                            .font(.system(size: 9))
-                            .foregroundColor(Color(hex: "#5865F2"))
-                            .frame(width: 12)
-                        Text(notif.displayName)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#C5C8CD"))
-                            .lineLimit(1).truncationMode(.tail)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
+                            Image(systemName: notif.isDM ? "person.fill" : "number")
+                                .font(.system(size: 9))
+                                .foregroundColor(Color(hex: "#5865F2"))
+                                .frame(width: 12)
+                            Text(notif.displayName)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color(hex: "#C5C8CD"))
+                                .lineLimit(1).truncationMode(.tail)
+                        }
+
+                        if let msg = notif.lastMessage, !msg.isEmpty {
+                            HStack(spacing: 3) {
+                                if let author = notif.lastAuthor {
+                                    Text("\(author):")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(Color(hex: "#8E939C"))
+                                }
+                                Text(msg)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "#6B7079"))
+                                    .lineLimit(2)
+                            }
+                            .padding(.leading, 17)
+                        }
+
+                        if replyingTo == notif.channelId {
+                            HStack(spacing: 4) {
+                                TextField("Reply…", text: $replyText)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color(hex: "#F5F6F8"))
+                                    .padding(.horizontal, 6).padding(.vertical, 3)
+                                    .background(Color(hex: "#5865F2").opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                Button {
+                                    guard !replyText.isEmpty else { return }
+                                    sending = true
+                                    let text = replyText
+                                    DiscordClient.shared.sendMessage(channelId: notif.channelId, text: text) { ok in
+                                        DispatchQueue.main.async {
+                                            sending = false
+                                            if ok { replyText = ""; replyingTo = nil }
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: sending ? "hourglass" : "paperplane.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Color(hex: "#5865F2"))
+                                }
+                                .disabled(replyText.isEmpty || sending)
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.leading, 17)
+                        }
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(notif == notifications.first ? Color(hex: "#5865F2").opacity(0.08) : .clear)
                     .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            replyingTo = replyingTo == notif.channelId ? nil : notif.channelId
+                            replyText = ""
+                        }
+                    }
                 }
             }
             .padding(.top, 5)

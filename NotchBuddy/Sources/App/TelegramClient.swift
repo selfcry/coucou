@@ -1,8 +1,8 @@
 import Foundation
 
 // Telegram Bot API client.
-// The user creates a bot via @BotFather, adds it to their groups/channels,
-// and the bot monitors unread messages via getUpdates.
+// The user creates a bot via @BotFather, adds it to groups/channels,
+// and the bot monitors messages via getUpdates.
 
 final class TelegramClient: @unchecked Sendable {
     static let shared = TelegramClient()
@@ -10,6 +10,7 @@ final class TelegramClient: @unchecked Sendable {
     private let queue = DispatchQueue(label: "tg-client", qos: .background)
     private var timer: DispatchSourceTimer?
     private var lastUpdateId: Int64 = 0
+    private var previousChatIds: Set<Int64> = []
 
     enum AuthState: String { case none, ready }
     private(set) var authState: AuthState = .none
@@ -30,9 +31,34 @@ final class TelegramClient: @unchecked Sendable {
         authState = .none
         KeychainStore.shared.remove("tg-bot-token")
         lastUpdateId = 0
+        previousChatIds = []
         DispatchQueue.main.async {
             AppState.shared.telegramChats = []
         }
+    }
+
+    // MARK: - Send message
+
+    func sendMessage(chatId: Int64, text: String, completion: @escaping (Bool) -> Void) {
+        guard let token = KeychainStore.shared.get("tg-bot-token"), !token.isEmpty else {
+            completion(false)
+            return
+        }
+        let urlStr = "https://api.telegram.org/bot\(token)/sendMessage"
+        guard let url = URL(string: urlStr) else { completion(false); return }
+
+        var req = URLRequest(url: url, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "chat_id": chatId,
+            "text": text
+        ])
+
+        URLSession.shared.dataTask(with: req) { _, response, _ in
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            completion((200...299).contains(code))
+        }.resume()
     }
 
     // MARK: - Polling
@@ -56,7 +82,6 @@ final class TelegramClient: @unchecked Sendable {
         guard authState == .ready,
               let token = KeychainStore.shared.get("tg-bot-token"), !token.isEmpty else { return }
 
-        // Get bot's chats via getUpdates (collects chat info from recent messages)
         let urlStr = "https://api.telegram.org/bot\(token)/getUpdates?offset=\(lastUpdateId)&timeout=1&allowed_updates=[\"message\"]"
         guard let url = URL(string: urlStr) else { return }
 
@@ -96,19 +121,33 @@ final class TelegramClient: @unchecked Sendable {
                     name = (first + " " + last).trimmingCharacters(in: .whitespaces)
                 }
 
+                let msgText = msg["text"] as? String
+                let fromObj = msg["from"] as? [String: Any]
+                let authorName = fromObj?["first_name"] as? String
+
                 let existing = chatMap[chatId]
                 chatMap[chatId] = TelegramChat(
+                    chatId: chatId,
                     name: name,
                     unreadCount: (existing?.unreadCount ?? 0) + 1,
                     chatType: chatType,
+                    lastMessage: msgText ?? existing?.lastMessage,
+                    lastAuthor: authorName ?? existing?.lastAuthor,
                     lastMessageDate: Date()
                 )
             }
 
             if !chatMap.isEmpty {
                 let chats = Array(chatMap.values).sorted { $0.unreadCount > $1.unreadCount }
+                let newIds = Set(chatMap.keys)
+                let hasNew = !newIds.subtracting(self.previousChatIds).isEmpty
+                self.previousChatIds = newIds
+
                 DispatchQueue.main.async {
                     AppState.shared.telegramChats = chats
+                    if hasNew {
+                        NotificationCenter.default.post(name: .hookReveal, object: nil)
+                    }
                 }
             }
         }.resume()
@@ -120,9 +159,12 @@ final class TelegramClient: @unchecked Sendable {
 struct TelegramChat: Identifiable, Equatable {
     enum ChatType: String { case personal, group, channel }
     let id = UUID()
+    let chatId: Int64
     let name: String
     let unreadCount: Int
     let chatType: ChatType
+    let lastMessage: String?
+    let lastAuthor: String?
     let lastMessageDate: Date
 
     var icon: String {
@@ -142,7 +184,7 @@ struct TelegramChat: Identifiable, Equatable {
     }
 
     static func == (lhs: TelegramChat, rhs: TelegramChat) -> Bool {
-        lhs.name == rhs.name && lhs.unreadCount == rhs.unreadCount && lhs.chatType == rhs.chatType
+        lhs.chatId == rhs.chatId && lhs.unreadCount == rhs.unreadCount
     }
 }
 
