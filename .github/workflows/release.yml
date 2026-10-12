@@ -30,10 +30,12 @@ jobs:
           cd td && mkdir build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release \
                 -DOPENSSL_ROOT_DIR=$(brew --prefix openssl) \
-                -DCMAKE_INSTALL_PREFIX=../../tdlib-install \
                 ..
           cmake --build . --target tdjson -j$(sysctl -n hw.ncpu)
-          cmake --install . --component libtdjson
+          cd ../../..
+          mkdir -p tdlib-install/lib
+          cp td/build/libtdjson.dylib tdlib-install/lib/
+          ls -lh tdlib-install/lib/
 
       - name: Install XcodeGen
         run: brew install xcodegen
