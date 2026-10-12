@@ -32,12 +32,12 @@ final class DiscordClient: @unchecked Sendable {
 
     // Fetch guilds, then check for unread channels
     private func fetchUnreadChannels(token: String) {
-        // Step 1: Get guild list with unread counts
         discordGet("users/@me/guilds", token: token) { [weak self] result in
             guard let self, case .success(let guildsJson) = result,
                   let guilds = guildsJson as? [[String: Any]] else { return }
 
-            var allNotifs: [DiscordNotification] = []
+            let lock = NSLock()
+            var collected: [DiscordNotification] = []
             let group = DispatchGroup()
 
             for guild in guilds.prefix(10) {
@@ -45,53 +45,34 @@ final class DiscordClient: @unchecked Sendable {
                       let guildName = guild["name"] as? String else { continue }
 
                 group.enter()
-                // Get channels with their last_message_id and read state
                 self.discordGet("guilds/\(guildId)/channels", token: token) { chResult in
                     defer { group.leave() }
                     guard case .success(let chJson) = chResult,
                           let channels = chJson as? [[String: Any]] else { return }
 
+                    var batch: [DiscordNotification] = []
                     for ch in channels {
                         guard let chId = ch["id"] as? String,
                               let chName = ch["name"] as? String,
                               let type = ch["type"] as? Int, type == 0 else { continue }
-
-                        // Check last_message_id presence as hint of activity
                         if ch["last_message_id"] != nil {
-                            allNotifs.append(DiscordNotification(
+                            batch.append(DiscordNotification(
                                 guildName: guildName, channelName: chName,
                                 channelId: chId, guildId: guildId
                             ))
                         }
                     }
+                    lock.lock()
+                    collected.append(contentsOf: batch)
+                    lock.unlock()
                 }
             }
 
-            // Step 2: Fetch read states to find truly unread
-            group.enter()
-            self.discordGet("users/@me/read-states", token: token) { rsResult in
-                defer { group.leave() }
-                if case .success(let rsJson) = rsResult,
-                   let states = rsJson as? [[String: Any]] {
-                    let readMap = states.reduce(into: [String: String]()) {
-                        if let id = $1["id"] as? String,
-                           let lastRead = $1["last_message_id"] as? String {
-                            $0[id] = lastRead
-                        }
-                    }
-                    // Filter: only channels with messages newer than last read
-                    allNotifs = allNotifs.filter { notif in
-                        guard let lastRead = readMap[notif.channelId] else { return true }
-                        return notif.channelId > lastRead
-                    }
-                }
-            }
-
-            group.notify(queue: .main) {
-                // Also fetch DMs
+            group.notify(queue: self.queue) {
+                let notifs = lock.withLock { collected }
                 self.fetchDMs(token: token) { dms in
                     DispatchQueue.main.async {
-                        AppState.shared.discordNotifications = Array((allNotifs + dms).prefix(10))
+                        AppState.shared.discordNotifications = Array((notifs + dms).prefix(10))
                     }
                 }
             }
