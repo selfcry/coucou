@@ -5144,8 +5144,12 @@ struct TelegramCardView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 5))
                 }
             }
-            .padding(.top, 5).padding(.horizontal, 26).padding(.bottom, 8)
+            .padding(.top, 5)
+            .padding(.leading, 108)
+            .padding(.trailing, 12)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.top, 4)
     }
 }
 
@@ -5187,8 +5191,12 @@ struct DiscordCardView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 5))
                 }
             }
-            .padding(.top, 5).padding(.horizontal, 26).padding(.bottom, 8)
+            .padding(.top, 5)
+            .padding(.leading, 108)
+            .padding(.trailing, 12)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.top, 4)
     }
 }
 
