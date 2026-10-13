@@ -27,14 +27,19 @@ jobs:
         run: |
           brew install gperf cmake openssl
           git clone --depth 1 https://github.com/tdlib/td.git
-          cd td && mkdir build && cd build
+          cd td
+          mkdir -p build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release \
                 -DOPENSSL_ROOT_DIR=$(brew --prefix openssl) \
                 ..
           cmake --build . --target tdjson -j$(sysctl -n hw.ncpu)
-          cd ../../..
+          echo "=== Looking for libtdjson ==="
+          find . -name "libtdjson*" -type f
+          cd ../..
           mkdir -p tdlib-install/lib
-          cp td/build/libtdjson.dylib tdlib-install/lib/
+          DYLIB=$(find td -name "libtdjson*.dylib" | head -1)
+          echo "Found: $DYLIB"
+          cp "$DYLIB" tdlib-install/lib/libtdjson.dylib
           ls -lh tdlib-install/lib/
 
       - name: Install XcodeGen
