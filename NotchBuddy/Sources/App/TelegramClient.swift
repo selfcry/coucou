@@ -282,7 +282,7 @@ final class TelegramClient: @unchecked Sendable {
 
             let newIds = Set(chats.map(\.chatId))
             if !newIds.subtracting(self.previousChatIds).isEmpty {
-                NotificationCenter.default.post(name: .hookReveal, object: nil)
+                NotificationCenter.default.post(name: .hookExpand, object: IslandView.overview)
             }
             self.previousChatIds = newIds
         }
@@ -308,7 +308,7 @@ final class TelegramClient: @unchecked Sendable {
 
         if let text, !text.isEmpty {
             DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .hookReveal, object: nil)
+                NotificationCenter.default.post(name: .hookExpand, object: IslandView.overview)
             }
         }
     }

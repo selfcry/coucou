@@ -88,7 +88,7 @@ final class DiscordClient: @unchecked Sendable {
                     DispatchQueue.main.async {
                         AppState.shared.discordNotifications = all
                         if hasNew && !all.isEmpty {
-                            NotificationCenter.default.post(name: .hookReveal, object: nil)
+                            NotificationCenter.default.post(name: .hookExpand, object: IslandView.overview)
                         }
                     }
                 }
